@@ -1,0 +1,25 @@
+가상환경 생성 : python -m venv dataA
+
+가상환경 활성화 : dataA\Scripts\activate
+
+가상환경 비활성화 : deactivate
+
+가상환경 폴더 삭제 : rmdir /s /q dataA
+
+파이썬 모듈 설치(통으로) : pip install -r python_modules.txt
+
+파이썬 파일 build : ctrl + shift + p
+                        interpreter 선택
+                        f5 or ctrl + f5
+                        종료 시 : shift + f5
+
+
+(파일 경로 : ssh://아이디@10.90.11.45/home/git_repo/MPW_tools/MPW2.git)
+-> git bash로 다운로드 가능
+(파이썬 가상환경 구성 참고 사이트 : https://m.blog.naver.com/bb_/222616288983)
+
+1. 가상환경을 만들어서 그 안에 필요한 python modules를 전부 설치하고
+2. 가상 환경 안에서 MPW2를 실행
+3. main은 mpw2.py
+4. 실행 시 : ctrl + f5
+5. 종료 시 : shift + f5
