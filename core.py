@@ -1,36 +1,66 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout,
-                               QHBoxLayout, QWidget, QMenuBar, QCheckBox,
-                               QSlider, QLabel, QFileDialog, QMessageBox,
-                               QDialog, QTextEdit, QPushButton, QGridLayout, QTabWidget, QScrollArea, QSpinBox)
-
 from dataclasses import dataclass
 import numpy as np
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
+from datetime import date
 from PySide6.QtCore import Qt, QTimer
-from datetime import datetime, timedelta, date
 
-import pyqtgraph as pg
+@dataclass(frozen=True)
+class Metric:
+    group: str      # temp / activity
+    kind: str       # current / station / avg
 
-@dataclass
+    @property
+    def key(self):
+        return f"{self.group}_{self.kind}"
+    
+    @property
+    def label(self):
+        return f"{self.group.capitalize()} {self.kind.capitalize()}"
+    
+ALL_METRICS = [
+    Metric("temps", "current"),
+    Metric("temps", "station"),
+    Metric("temps", "avg"),
+    Metric("acts", "current"),
+    Metric("acts", "station"),
+    Metric("acts", "avg"),
+]
+
+
 class DatasetEntry:
-    """
-    Step2 임시 어댑터
-    내부는 CowData를 사용하도록 변경
-    """
-
     def __init__(self, cow: CowData):
         self.cow = cow
         self.label = cow.label
+
+        # 데이터 전체 on/off
         self.visible = True
         self.checkbox = None
-        self.curves = {
-            "temp": [],
-            "activity": [],
+
+        # metric 단위 visible
+        self.metric_visible = {
+            metric.key: True for metric in ALL_METRICS
         }
+
+        # metric별 curve 저장
+        self.curves = {}
+
+    def set_metric_visible(self, metric_key, state: bool):
+        self.metric_visible[metric_key] = state
+
+    def is_metric_visible(self, metric_key):
+        return self.metric_visible.get(metric_key, False)
+    
+    def get_metric_data(self, metric_key: str):
+        """
+        metric_key 예:
+        - temps_current
+        - acts_avg
+        """
+        return getattr(self.cow, metric_key, None)
 
 @dataclass
 class CowData:
@@ -206,31 +236,13 @@ class StatisticsEngine:
             "stats": results
         }
 
-
-class RangeCalculator:
-    @staticmethod
-    def calc(entries: list[CowData]):
-        all_temps = []
-        all_acts = []
-
-        for e in entries:
-            all_temps.extend(e.temps_current)
-            all_temps.extend(e.temps_station)
-            all_temps.extend(e.temps_avg)
-
-            all_acts.extend(e.acts_current)
-            all_acts.extend(e.acts_station)
-            all_acts.extend(e.acts_avg)
-
-        return all_temps, all_acts
-
-    @staticmethod
-    def minmax(values: list[float]):
-        if not values:
-            return None, None
-        return min(values), max(values)
-
-
+@dataclass
+class DrawCommand:
+    entry: DatasetEntry
+    metric_key: str
+    x: list
+    y: list
+    visible: bool
 
 class GraphEngine:
     """
@@ -281,155 +293,43 @@ class GraphEngine:
             if x_min <= t <= x_max
         ]
     
-    @staticmethod
-    def clear_curves(entries, main_vb, activity_vb):
-        for entry in entries:
-            for c in entry.curves["temp"]:
-                main_vb.removeItem(c)
-            for c in entry.curves["activity"]:
-                activity_vb.removeItem(c)
+    
+    
+    @classmethod
+    def prepare_draw_commands(cls, visible_entries, time_seconds):
+        commands = []
 
-            entry.curves["temp"].clear()
-            entry.curves["activity"].clear()
-
-
-    @staticmethod
-    def apply_y_ranges(ui):
-        if ui.global_temp_range:
-            y_min, y_max = ui.global_temp_range
-            ui.main_vb.setYRange(y_min, y_max)
-
-        if ui.global_act_range:
-            y_min, y_max = ui.global_act_range
-            ui.activity_vb.setYRange(y_min, y_max)
-
-
-    @staticmethod
-    def draw_entries(cls, ui, visible_entries, time_seconds):
         for entry in visible_entries:
-            cls.draw_entry(ui, entry, time_seconds)
+            for metric in ALL_METRICS:
+                metric_key = metric.key
 
-    @classmethod
-    def draw_entry(cls, ui, entry, time_seconds):
-        dc = entry.cow
+                print(
+                    "METRIC VIS:",
+                    metric_key,
+                    entry.visible,
+                    entry.is_metric_visible(metric_key)
+                )
 
-        cls._draw_temp(ui, entry, dc, time_seconds)
-        cls._draw_activity(ui, entry, dc, time_seconds)
+                visible = entry.visible and entry.is_metric_visible(metric_key)
 
-    @staticmethod
-    def _normalize_1d(values):
-        if not values:
-            return []
+                y_values = entry.get_metric_data(metric_key) if visible else None
 
-        if isinstance(values, (int, float, np.number)):
-            return []
+                print(
+                    metric_key,
+                    len(time_seconds),
+                    len(y_values) if y_values else None
+                )
 
-        if isinstance(values, (list, tuple, np.ndarray)):
-            if len(values) == 0:
-                return []
+                commands.append({
+                    "entry": entry,
+                    "metric": metric_key,
+                    "visible": visible,
+                    "x": time_seconds if visible else None,
+                    "y": y_values
+                })
 
-            if len(values) == 1 and isinstance(values[0], (list, tuple, np.ndarray)):
-                return list(values[0])
-
-            return list(values)
-
-        return []
-    
-    @classmethod
-    def _plot_series(cls, vb, time_seconds, values, pen, name):
-        values_1d = cls._normalize_1d(values)
-
-        pairs = [(t, v) for t, v in zip(time_seconds, values_1d) if v is not None]
-        if not pairs:
-            return None
-
-        t, v = zip(*pairs)
-
-        curve = pg.PlotCurveItem(
-            np.asarray(t),
-            np.asarray(v),
-            pen=pen,
-            name=name,
-            clipToView=True
-        )
-        vb.addItem(curve)
-        return curve
-    
-    @classmethod
-    def _draw_temp(cls, ui, entry, dc, time_seconds):
-        label = dc.label
-        curves = []
-
-        configs = [
-            (dc.temps_current, pg.mkPen('r', width=2), "Current Temp"),
-            (dc.temps_station, pg.mkPen('m', width=2, style=Qt.DashLine), "Station Temp"),
-            (dc.temps_avg, pg.mkPen('orange', width=2), "Avg Temp"),
-        ]
-
-        for values, pen, name in configs:
-            curve = cls._plot_series(ui.main_vb, time_seconds, values, pen, f"[{label}] {name}")
-            if curve:
-                curves.append(curve)
-
-        entry.curves["temp"].extend(curves)
-    
-    @classmethod
-    def _draw_activity(cls, ui, entry, dc, time_seconds):
-        label = dc.label
-        curves = []
-
-        configs = [
-            (dc.acts_current, pg.mkPen('g', width=2), "Current Activity"),
-            (dc.acts_station, pg.mkPen('c', width=2, style=Qt.DashLine), "Station Activity"),
-            (dc.acts_avg, pg.mkPen('b', width=2), "Avg Activity"),
-        ]
-
-        for values, pen, name in configs:
-            curve = cls._plot_series(ui.activity_vb, time_seconds, values, pen, f"[{label}] {name}")
-            if curve:
-                curves.append(curve)
-
-        entry.curves["activity"].extend(curves)
-
-
-    @staticmethod
-    def set_x_range(ui, time_seconds):
-        if time_seconds:
-            ui.main_vb.setXRange(0, max(time_seconds))
-            ui.activity_vb.setXLink(ui.main_vb)
-
-
-    @staticmethod
-    def create_analysis_lines(ui, time_seconds):
-        if not time_seconds:
-            return None, None
-
-        max_time = max(time_seconds)
-
-        line_a = pg.InfiniteLine(pos=max_time * 0.25, angle=90, movable=True)
-        line_b = pg.InfiniteLine(pos=max_time * 0.75, angle=90, movable=True)
-
-        ui.graph_widget.addItem(line_a)
-        ui.graph_widget.addItem(line_b)
-
-        return line_a, line_b
-
-
-    @classmethod
-    def redraw(cls, ui, visible_entries, time_seconds):
-        cls.clear_curves(ui.data_model.get_all_entries(), ui.main_vb, ui.activity_vb)
-        cls.apply_y_ranges(ui)
-        cls.draw_entries(cls, ui, visible_entries, time_seconds)
-        cls.set_x_range(ui, time_seconds)
-
-        lines = cls.create_analysis_lines(ui, time_seconds)
-
-        QTimer.singleShot(0, ui.update_viewbox_geometries)
-
-        return lines
-
-
-    
+        return commands
+ 
 class DataModel:
     def __init__(self):
         self._entries = {}
