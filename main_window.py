@@ -308,6 +308,7 @@ class CowAnalyzer(QMainWindow):
 
 
     def setup_ui(self): # UI구성, 애플리케이션 외형 생성
+        print("setup_ui()")
         self.setWindowTitle(f"Cow Ear Tag Data Analyzer (Build: {self._get_build_date()})")
         self.setGeometry(100, 100, 1200, 800)
 
@@ -439,22 +440,9 @@ class CowAnalyzer(QMainWindow):
         except:
             pass
 
-        # Visibility controlled by legend clicks (no checkboxes needed)
-        # Initialize with default visibility settings (all True for real-time data)
-        # These will be reset to DEFAULT_PLOT_VISIBILITY when opening a log file
-        # self.cow_current_temp_visible = True
-        # self.cow_station_temp_visible = True
-        # self.cow_avg_temp_visible = True
-        # self.cow_current_activity_visible = True
-        # self.cow_station_activity_visible = True
-        # self.cow_avg_activity_visible = True
-
-        # # Create graph widget
-        # self.setup_graph()
-
-
 
     def setup_graph(self): # 그래프 설정(그래프 기능의 핵심)
+        print("setup_graph()")
         # Create PlotWidget with custom ViewBox for better mouse control
         self.graph_widget = pg.PlotWidget(viewBox=CustomViewBox(analyzer=self), axisItems={'bottom': TimeAxisItem(orientation='bottom')})
         self.graph_widget.setLabel('bottom', 'Time')
@@ -658,75 +646,108 @@ class CowAnalyzer(QMainWindow):
 
     def on_x_auto_range_toggled(self, checked):
         """Handle X auto range toggle - re-apply auto range when enabled"""
-        if checked and data.timestamps:
-            # X auto range was enabled - recalculate and apply range
-            self._updating_ranges = True
-            try:
-                # Recalculate X range
-                self.apply_x_auto_range()
-            finally:
-                # Reset flag after a short delay to ensure all queued signals are processed
-                QTimer.singleShot(50, lambda: setattr(self, '_updating_ranges', False))
+        if not checked:
+            return
+
+        start_time, time_seconds = self.data_model.get_time_reference()
+        if not time_seconds:
+            return
+
+        self._updating_ranges = True
+        try:
+            self.apply_x_auto_range()
+        finally:
+            QTimer.singleShot(
+                50,
+                lambda: setattr(self, '_updating_ranges', False)
+            )
 
     def apply_x_auto_range(self):
         """Apply auto range to X axis based on current data"""
-        if not data.timestamps:
+        start_time, time_seconds = self.data_model.get_time_reference()
+        if not time_seconds:
             return
 
-        # Convert timestamps to seconds
-        start_time = data.timestamps[0]
-        time_seconds = [(ts - start_time).total_seconds() for ts in data.timestamps]
+        max_time = max(time_seconds)
 
-        if time_seconds:
-            max_time = max(time_seconds)
-            # Limit to MAX_X_RANGE (3600 seconds = 1 hour)
-            if max_time > self.max_x_range:
-                # Show the most recent 1 hour of data
-                x_min = max_time - self.max_x_range
-                x_max = max_time
-                self.main_vb.setXRange(x_min, x_max, padding=0.02)
-                self.stored_x_range = (x_min, x_max)
-            else:
-                # Show all data if less than 1 hour
-                self.main_vb.setXRange(0, max_time, padding=0.02)
-                self.stored_x_range = (0, max_time)
+        if max_time > self.max_x_range:
+            x_min = max_time - self.max_x_range
+            x_max = max_time
+        else:
+            x_min = 0
+            x_max = max_time
+
+        self.main_vb.setXRange(x_min, x_max, padding=0.02)
+        self.stored_x_range = (x_min, x_max)
+
 
     def on_y_auto_range_toggled(self, checked):
         """Handle Y auto range toggle - re-apply auto range when enabled"""
-        if checked and data.timestamps:
-            # Y auto range was enabled - recalculate and apply ranges
-            self._updating_ranges = True
-            try:
-                # Recalculate all Y ranges
-                self.apply_y_auto_ranges()
-            finally:
-                # Reset flag after a short delay to ensure all queued signals are processed
-                QTimer.singleShot(50, lambda: setattr(self, '_updating_ranges', False))
+        if not checked:
+            return
+
+        start_time, time_seconds = self.data_model.get_time_reference()
+        if not time_seconds:
+            return
+
+        self._updating_ranges = True
+        try:
+            self.apply_y_auto_ranges()
+        finally:
+            QTimer.singleShot(
+                50,
+                lambda: setattr(self, '_updating_ranges', False)
+            )
+
 
     def apply_y_auto_ranges(self):
         """Apply auto range to all Y axes based on current data"""
-        if not data.timestamps:
+        entry = self.data_model.get_primary_entry()
+        if not entry:
             return
 
-        # Calculate data ranges
-        cow_temps = [v for v in (data.cow_current_temp + data.cow_station_temp + data.cow_avg_temp) if v is not None]
-        cow_acts = [v for v in (data.cow_current_activity + data.cow_station_activity + data.cow_avg_activity) if v is not None]
+        cow = entry.cow
+        if not cow.timestamps:
+            return
 
-        # Apply ranges for each axis
+        cow_temps = [
+            v for v in (
+                cow.cow_current_temp +
+                cow.cow_station_temp +
+                cow.cow_avg_temp
+            )
+            if v is not None
+        ]
+
+        cow_acts = [
+            v for v in (
+                cow.cow_current_activity +
+                cow.cow_station_activity +
+                cow.cow_avg_activity
+            )
+            if v is not None
+        ]
+
         if cow_temps:
             min_val, max_val = min(cow_temps), max(cow_temps)
             y_min, y_max = self.calculate_y_range_for_quarter(min_val, max_val)
             self.main_vb.setYRange(y_min, y_max)
             self.stored_y_ranges['temp'] = (y_min, y_max)
-            if hasattr(self, 'graph_widget'):
-                self.graph_widget.setLabel('left', f'Temperature (°C): {y_min:.1f} - {y_max:.1f}', color='red')
+            self.graph_widget.setLabel(
+                'left',
+                f'Temperature (°C): {y_min:.1f} - {y_max:.1f}',
+                color='red'
+            )
 
         if cow_acts:
             min_val, max_val = min(cow_acts), max(cow_acts)
             y_min, y_max = self.calculate_y_range_for_quarter(min_val, max_val)
             self.activity_vb.setYRange(y_min, y_max)
             self.stored_y_ranges['activity'] = (y_min, y_max)
-            self.activity_axis.setLabel(f'Activity: {int(y_min)} - {int(y_max)}', color='green')
+            self.activity_axis.setLabel(
+                f'Activity: {int(y_min)} - {int(y_max)}',
+                color='green'
+            )
 
 
     def on_view_range_changed(self, view_box, ranges):
@@ -891,6 +912,7 @@ class CowAnalyzer(QMainWindow):
         return y_min, y_max
 
     def setup_connections(self):
+        print("setup_connections()")
         self.open_action.triggered.connect(self.open_log_file)
         self.export_excel_action.triggered.connect(self.export_to_excel_menu)
         self.settings_action.triggered.connect(self.open_settings_dialog)
@@ -916,6 +938,7 @@ class CowAnalyzer(QMainWindow):
             return 0
 
     def reload_data(self):
+        print("reload_data()")
         if self.file_name is None:
             pass
         else:
@@ -1079,7 +1102,7 @@ class CowAnalyzer(QMainWindow):
                     QMessageBox.information(self, "Success", "Log file loaded and CSV exported successfully!")
                 else:
                     QMessageBox.information(self, "Success", "Log file loaded successfully!")
-            QMessageBox.information(self, "Success", "Log file loaded successfully!")
+
         except Exception as e:
             import traceback
             error_msg = f"Failed to process log file:\n\n{str(e)}\n\nFull traceback:\n{traceback.format_exc()}"
@@ -1099,6 +1122,7 @@ class CowAnalyzer(QMainWindow):
         self.update_graph()
 
     def create_dataset_checkbox(self, key):
+        print("create_dataset_checkbox()")
         entry = self.data_model.get_entry(key)
         if not entry:
             return None
@@ -1122,14 +1146,13 @@ class CowAnalyzer(QMainWindow):
 
 
     def on_metric_checkbox_changed(self, entry, metric_key, state):
-        print("STATE RAW:", state, type(state))
-        print("CHECKED CMP:", state == Qt.Checked)
-        # entry.set_metric_visible(metric_key, state == Qt.Checked)
+        print("on_metric_checkbox_changed()")
         entry.set_metric_visible(metric_key, bool(state))
         # entry.set_metric_visible(metric_key, state != 0)
         self.update_graph()
 
     def create_metric_checkboxes(self, entry):
+        print("create_metric_checkboxes()")
 
         container = QWidget()
         layout = QVBoxLayout()
@@ -1154,6 +1177,7 @@ class CowAnalyzer(QMainWindow):
         self.dataset_layout.addWidget(container)
 
     def parse_log_file(self, file_path):
+        print("parse_log_file()")
         # Check if it's an Excel file
         if file_path.lower().endswith('.xlsx'):
             self.parse_excel_file(file_path)
@@ -1163,6 +1187,7 @@ class CowAnalyzer(QMainWindow):
         
 
     def parse_excel_file(self, file_path):
+        print("parse_excel_file()")
         """Parse Excel file exported by this application"""
         try:
             wb = load_workbook(file_path, read_only=True, data_only=True)
@@ -1219,6 +1244,7 @@ class CowAnalyzer(QMainWindow):
     
 
     def parse_cow_excel_data(self, ws):
+        print("parse_cow_excel_data()")
         rows = list(ws.iter_rows(values_only=True))
         
         # Find header row with "날짜"

@@ -20,7 +20,7 @@ class Metric:
     @property
     def label(self):
         return f"{self.group.capitalize()} {self.kind.capitalize()}"
-    
+     
 ALL_METRICS = [
     Metric("temps", "current"),
     Metric("temps", "station"),
