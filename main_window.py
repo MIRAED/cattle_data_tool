@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout,
                                QHBoxLayout, QWidget, QMenuBar, QCheckBox,
                                QSlider, QLabel, QFileDialog, QMessageBox,
-                               QDialog, QTextEdit, QPushButton, QGridLayout, QTabWidget, QScrollArea, QSpinBox)
+                               QDialog, QTextEdit, QPushButton, QGridLayout, 
+                               QTabWidget, QScrollArea, QSpinBox, QToolButton)
 
 from core import (DataPool, StatisticsEngine, DatasetEntry, CowData, DataModel, 
                   GraphEngine, ALL_METRICS)
@@ -1133,31 +1134,81 @@ class CowAnalyzer(QMainWindow):
         file_path, date = key
         name = os.path.basename(file_path)
 
-        cb = QCheckBox(name)
-        # cb.setChecked(True)
-        cb.setChecked(entry.visible)
+        # header widget
+        header_widget = QWidget()
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_widget.setLayout(header_layout)
+        # arrow button
+        arrow_btn = QToolButton()
+        arrow_btn.setArrowType(Qt.DownArrow)
+        arrow_btn.setCheckable(True)
+        arrow_btn.setChecked(True)
+        # file checkbox
+        file_checkbox = QCheckBox(name)
+        file_checkbox.setChecked(entry.visible)
+        file_checkbox.stateChanged.connect(
+            lambda state, e=key:
+                self.on_dataset_toggled(e, state)
+        )
 
-        self.dataset_layout.addWidget(cb)
-        entry.checkbox = cb
+        header_layout.addWidget(arrow_btn)
+        header_layout.addWidget(file_checkbox)
 
-        self.create_metric_checkboxes(entry)
+        self.dataset_layout.addWidget(header_widget)
 
-        cb.stateChanged.connect(lambda state, k=key: self.on_dataset_toggled(k, state))
+        entry.checkbox = file_checkbox # 엔트리에 저장
+
+        # metric container
+        metric_container = QWidget()
+        metric_layout = QVBoxLayout()
+        metric_layout.setContentsMargins(20, 0, 0, 0)
+        metric_container.setLayout(metric_layout)
+
+        self.dataset_layout.addWidget(metric_container)
+
+        self.create_metric_checkboxes(entry, metric_layout)
+
+        # arrow toggle operation
+        def toggle():
+            entry.collapsed = not entry.collapsed
+
+            if entry.collapsed:
+                arrow_btn.setArrowType(Qt.RightArrow)
+                metric_container.setVisible(False)
+            else:
+                arrow_btn.setArrowType(Qt.DownArrow)
+                metric_container.setVisible(True)
+
+        arrow_btn.clicked.connect(toggle)
+
+        return file_checkbox
+
+        # cb = QCheckBox(name)
+        # # cb.setChecked(True)
+        # cb.setChecked(entry.visible)
+
+        # self.dataset_layout.addWidget(cb)
+        # entry.checkbox = cb
+
+        # self.create_metric_checkboxes(entry)
+
+        # cb.stateChanged.connect(lambda state, k=key: self.on_dataset_toggled(k, state))
 
 
     def on_metric_checkbox_changed(self, entry, metric_key, state):
         print("on_metric_checkbox_changed()")
         entry.set_metric_visible(metric_key, bool(state))
-        # entry.set_metric_visible(metric_key, state != 0)
+
         self.update_graph()
 
-    def create_metric_checkboxes(self, entry):
+    def create_metric_checkboxes(self, entry, layout):
         print("create_metric_checkboxes()")
 
-        container = QWidget()
-        layout = QVBoxLayout()
-        layout.setContentsMargins(20, 0, 0, 0)
-        container.setLayout(layout)
+        # container = QWidget()
+        # layout = QVBoxLayout()
+        # layout.setContentsMargins(20, 0, 0, 0)
+        # container.setLayout(layout)
 
         for metric in ALL_METRICS:
 
@@ -1174,7 +1225,7 @@ class CowAnalyzer(QMainWindow):
 
             layout.addWidget(cb)
 
-        self.dataset_layout.addWidget(container)
+        # self.dataset_layout.addWidget(container)
 
     def parse_log_file(self, file_path):
         print("parse_log_file()")

@@ -39,6 +39,7 @@ class DatasetEntry:
         # 데이터 전체 on/off
         self.visible = True
         self.checkbox = None
+        self.collapsed = False
 
         # metric 단위 visible
         self.metric_visible = {
