@@ -1120,6 +1120,14 @@ class CowAnalyzer(QMainWindow):
         entry.visible = bool(state)
         print("on_dataset_toggled : visible =", entry.visible)
 
+        for cb in entry.metric_checkboxes:
+            cb.blockSignals(True)
+            cb.setChecked(entry.visible)
+            cb.blockSignals(False)
+
+        for metric_key in entry.metric_visible:
+            entry.set_metric_visible(metric_key, entry.visible)
+
         self.update_graph()
 
     def create_dataset_checkbox(self, key):
@@ -1184,31 +1192,24 @@ class CowAnalyzer(QMainWindow):
 
         return file_checkbox
 
-        # cb = QCheckBox(name)
-        # # cb.setChecked(True)
-        # cb.setChecked(entry.visible)
-
-        # self.dataset_layout.addWidget(cb)
-        # entry.checkbox = cb
-
-        # self.create_metric_checkboxes(entry)
-
-        # cb.stateChanged.connect(lambda state, k=key: self.on_dataset_toggled(k, state))
-
 
     def on_metric_checkbox_changed(self, entry, metric_key, state):
         print("on_metric_checkbox_changed()")
         entry.set_metric_visible(metric_key, bool(state))
 
+        all_checked = all(cb.isChecked() for cb in entry.metric_checkboxes)
+
+        entry.checkbox.blockSignals(True)
+        entry.checkbox.setChecked(all_checked)
+        entry.checkbox.blockSignals(False)
+
+        entry.visible = all_checked
+
         self.update_graph()
 
     def create_metric_checkboxes(self, entry, layout):
         print("create_metric_checkboxes()")
-
-        # container = QWidget()
-        # layout = QVBoxLayout()
-        # layout.setContentsMargins(20, 0, 0, 0)
-        # container.setLayout(layout)
+        entry.metric_checkboxes = []
 
         for metric in ALL_METRICS:
 
@@ -1224,8 +1225,8 @@ class CowAnalyzer(QMainWindow):
             )
 
             layout.addWidget(cb)
+            entry.metric_checkboxes.append(cb)
 
-        # self.dataset_layout.addWidget(container)
 
     def parse_log_file(self, file_path):
         print("parse_log_file()")
@@ -1545,6 +1546,7 @@ class CowAnalyzer(QMainWindow):
             print("CURVES:", e.label, e.curves.keys())
 
         if not visible_entries:
+            print("[WARN] No visible entries")
             self.clear_plot()
             return
 
