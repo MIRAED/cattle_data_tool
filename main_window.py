@@ -1203,7 +1203,7 @@ class CowAnalyzer(QMainWindow):
         entry.checkbox.setChecked(all_checked)
         entry.checkbox.blockSignals(False)
 
-        entry.visible = all_checked
+        # entry.visible = all_checked
 
         self.update_graph()
 
