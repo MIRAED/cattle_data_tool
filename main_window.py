@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout,
+from PySide6.QtWidgets import (QMenu, QMainWindow, QVBoxLayout,
                                QHBoxLayout, QWidget, QMenuBar, QCheckBox,
                                QSlider, QLabel, QFileDialog, QMessageBox,
                                QDialog, QTextEdit, QPushButton, QGridLayout, 
@@ -931,19 +931,6 @@ class CowAnalyzer(QMainWindow):
         if hasattr(self, 'main_vb'):
             self.main_vb.sigRangeChanged.connect(self.on_view_range_changed)
 
-    def get_file_size(self, file_path):
-        """Get current file size"""
-        try:
-            return os.path.getsize(file_path)
-        except:
-            return 0
-
-    def reload_data(self):
-        print("reload_data()")
-        if self.file_name is None:
-            pass
-        else:
-            self.open_log_file(self.file_name)
 
     def open_settings_dialog(self):
         """Open the settings dialog to configure max X range"""
@@ -1087,7 +1074,6 @@ class CowAnalyzer(QMainWindow):
 
 
             # Get initial file position
-            self.last_file_position = self.get_file_size(file_path)
             if '.csv' in file_path or '.xlsx' in file_path:
                 QMessageBox.information(self, "Success", "Log file loaded successfully!")
             else:
@@ -1147,6 +1133,12 @@ class CowAnalyzer(QMainWindow):
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_widget.setLayout(header_layout)
+
+        header_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        header_widget.customContextMenuRequested.connect(
+            lambda pos, k=key, w=header_widget: self.show_dataset_context_menu(k, w, pos)
+        )
+
         # arrow button
         arrow_btn = QToolButton()
         arrow_btn.setArrowType(Qt.DownArrow)
@@ -1159,14 +1151,9 @@ class CowAnalyzer(QMainWindow):
             lambda state, e=key: self.on_dataset_toggled(e, state)
         )
 
-        delete_btn = QPushButton("✕")
-        delete_btn.setFixedWidth(24)
-        delete_btn.clicked.connect(lambda _, k=key: self.remove_dataset(k))
-
         header_layout.addWidget(arrow_btn)
         header_layout.addWidget(file_checkbox)
         header_layout.addStretch()
-        header_layout.addWidget(delete_btn)
 
         self.dataset_layout.addWidget(header_widget)
 
@@ -1497,12 +1484,6 @@ class CowAnalyzer(QMainWindow):
                 target_vb = self.activity_vb
             
             if curve is None:
-                # curve = pg.PlotCurveItem(
-                #     clipToView=True,
-                #     name=f"{entry.label}-{metric}"
-                # )
-                # target_vb.addItem(curve)
-                # entry.curves[metric] = curve
                 self._create_curves_for_entry(entry)
                 curve = entry.curves.get(metric)
                 print(f"[CREATE] curve created:", entry.label, metric)
@@ -1550,7 +1531,6 @@ class CowAnalyzer(QMainWindow):
             )
         
     
-
     def update_graph(self):
         print(">>> update_graph ENTER")
 
@@ -2046,7 +2026,18 @@ class CowAnalyzer(QMainWindow):
             entry.metric_container.deleteLater()
 
         self.data_model.remove(key)
-        self.update_graph()   
+        self.update_graph()  
+
+    def show_dataset_context_menu(self, key, widget, pos):
+        menu = QMenu(self)
+
+        delete_action = menu.addAction("삭제")
+
+        global_pos = widget.mapToGlobal(pos)
+        action = menu.exec(global_pos)
+
+        if action == delete_action:
+            self.remove_dataset(key) 
     
     def apply_y_ranges(self):
         if self.global_temp_range:
