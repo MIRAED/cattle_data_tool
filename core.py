@@ -347,6 +347,10 @@ class DataModel:
     def clear(self):
         self._entries.clear()
 
+    def remove(self, key):
+        if key in self._entries:
+            del self._entries[key]
+
     # -------------------------
     # 조회
     # -------------------------

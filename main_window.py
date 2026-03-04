@@ -1156,16 +1156,19 @@ class CowAnalyzer(QMainWindow):
         file_checkbox = QCheckBox(name)
         file_checkbox.setChecked(entry.visible)
         file_checkbox.stateChanged.connect(
-            lambda state, e=key:
-                self.on_dataset_toggled(e, state)
+            lambda state, e=key: self.on_dataset_toggled(e, state)
         )
+
+        delete_btn = QPushButton("✕")
+        delete_btn.setFixedWidth(24)
+        delete_btn.clicked.connect(lambda _, k=key: self.remove_dataset(k))
 
         header_layout.addWidget(arrow_btn)
         header_layout.addWidget(file_checkbox)
+        header_layout.addStretch()
+        header_layout.addWidget(delete_btn)
 
         self.dataset_layout.addWidget(header_widget)
-
-        entry.checkbox = file_checkbox # 엔트리에 저장
 
         # metric container
         metric_container = QWidget()
@@ -1189,6 +1192,10 @@ class CowAnalyzer(QMainWindow):
                 metric_container.setVisible(True)
 
         arrow_btn.clicked.connect(toggle)
+
+        entry.checkbox = file_checkbox # 엔트리에 저장
+        entry.header_widget = header_widget
+        entry.metric_container = metric_container
 
         return file_checkbox
 
@@ -1434,11 +1441,17 @@ class CowAnalyzer(QMainWindow):
         ]
     
     def clear_plot(self):
-        # self.main_vb.clear()
-        # self.activity_vb.clear()
+        print(">>> CLEAR PLOT")
+        for item in list(self.main_vb.addedItems):
+            self.main_vb.removeItem(item)
+        if hasattr(self, "activity_vb"):
+            for item in list(self.activity_vb.addedItems):
+                self.activity_vb.removeItem(item)
         for entry in self.data_model.get_all_entries():
-            for curve in entry.curves.values():
-                curve.setVisible(False)
+            entry.curves.clear()
+        # for entry in self.data_model.get_all_entries():
+        #     for curve in entry.curves.values():
+        #         curve.setVisible(False)
 
         self.legend.clear()
     
@@ -1484,12 +1497,14 @@ class CowAnalyzer(QMainWindow):
                 target_vb = self.activity_vb
             
             if curve is None:
-                curve = pg.PlotCurveItem(
-                    clipToView=True,
-                    name=f"{entry.label}-{metric}"
-                )
-                target_vb.addItem(curve)
-                entry.curves[metric] = curve
+                # curve = pg.PlotCurveItem(
+                #     clipToView=True,
+                #     name=f"{entry.label}-{metric}"
+                # )
+                # target_vb.addItem(curve)
+                # entry.curves[metric] = curve
+                self._create_curves_for_entry(entry)
+                curve = entry.curves.get(metric)
                 print(f"[CREATE] curve created:", entry.label, metric)
             elif curve.scene() is None:
                 target_vb.addItem(curve)
@@ -1504,6 +1519,8 @@ class CowAnalyzer(QMainWindow):
                 ]
                 if pairs:
                     xs, ys = zip(*pairs)
+                    xs = np.array(xs).flatten()
+                    ys = np.array(ys).flatten()
                     curve.setData(xs, ys)
                 else:
                     curve.clear()
@@ -2013,6 +2030,23 @@ class CowAnalyzer(QMainWindow):
 
             entry.curves["temp"].clear()
             entry.curves["activity"].clear()
+
+
+    def remove_dataset(self, key):
+        entry = self.data_model.get_entry(key)
+        if not entry:
+            return
+
+        if hasattr(entry, "header_widget"):
+            self.dataset_layout.removeWidget(entry.header_widget)
+            entry.header_widget.deleteLater()
+
+        if hasattr(entry, "metric_container"):
+            self.dataset_layout.removeWidget(entry.metric_container)
+            entry.metric_container.deleteLater()
+
+        self.data_model.remove(key)
+        self.update_graph()   
     
     def apply_y_ranges(self):
         if self.global_temp_range:
