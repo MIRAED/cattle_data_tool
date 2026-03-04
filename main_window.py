@@ -917,19 +917,11 @@ class CowAnalyzer(QMainWindow):
         self.open_action.triggered.connect(self.open_log_file)
         self.export_excel_action.triggered.connect(self.export_to_excel_menu)
         self.settings_action.triggered.connect(self.open_settings_dialog)
-        # self.c_avg_slider.valueChanged.connect(self.update_c_avg_range)
-        # self.c_sigma_slider.valueChanged.connect(self.update_c_sigma_range)
-        # self.temp_slider.valueChanged.connect(self.update_temperature_range)
-        # self.humidity_slider.valueChanged.connect(self.update_humidity_range)
         self.lines_checkbox.toggled.connect(self.toggle_analysis_lines)
 
         # Connect auto range toggle actions
         self.x_auto_range_action.toggled.connect(self.on_x_auto_range_toggled)
         self.y_auto_range_action.toggled.connect(self.on_y_auto_range_toggled)
-
-        # Connect ViewBox range changes to store current ranges when user manually zooms/pans
-        if hasattr(self, 'main_vb'):
-            self.main_vb.sigRangeChanged.connect(self.on_view_range_changed)
 
 
     def open_settings_dialog(self):
@@ -940,7 +932,8 @@ class CowAnalyzer(QMainWindow):
             self.max_x_range = dialog.get_max_x_range()
 
             # If X auto range is enabled, reapply the range with new setting
-            if self.x_auto_range_action.isChecked() and data.timestamps:
+            start_time, time_seconds = self.data_model.get_time_reference()
+            if self.x_auto_range_action.isChecked() and time_seconds:
                 self.apply_x_auto_range()
     
     def _calculate_global_y_ranges(self):

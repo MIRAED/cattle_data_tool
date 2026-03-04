@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import numpy as np
-from collections import defaultdict
 from datetime import date
 from pathlib import Path
 from datetime import date
-from PySide6.QtCore import Qt, QTimer
 
 @dataclass(frozen=True)
 class Metric:
@@ -134,41 +131,6 @@ class DataPool:
 
 class StatisticsEngine:
     """데이터 통계 계산 전담 엔진"""
-
-    @staticmethod
-    def slice_by_time(dc, start_sec, end_sec):
-        """시간 구간에 해당하는 인덱스 추출"""
-        indices = [
-            i for i, ts in enumerate(dc.time_seconds)
-            if start_sec <= ts <= end_sec
-        ]
-        return indices
-
-    @staticmethod
-    def mean(values):
-        """None 제외 평균"""
-        vals = [v for v in values if v is not None]
-        if not vals:
-            return None
-        return sum(vals) / len(vals)
-
-    @classmethod
-    def range_mean(cls, dc, start_sec, end_sec, attr):
-        """
-        특정 속성(temp/activity)의
-        A-B 구간 평균 계산
-        """
-        idx = cls.slice_by_time(dc, start_sec, end_sec)
-        values = [getattr(dc, attr)[i] for i in idx]
-        return cls.mean(values)
-
-    @classmethod
-    def summarize_between_lines(cls, dc, start_sec, end_sec):
-        """라인 A-B 사이 주요 통계 반환"""
-        return {
-            "temp_mean": cls.range_mean(dc, start_sec, end_sec, "temps"),
-            "act_mean": cls.range_mean(dc, start_sec, end_sec, "activities"),
-        }
     
     @staticmethod
     def _basic_stats(filtered_values):
