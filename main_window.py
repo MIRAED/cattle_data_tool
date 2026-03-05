@@ -49,10 +49,29 @@ class TimeAxisItem(pg.AxisItem):
         else:
             self.mode = "relative"
 
-    def tickStrings(self, values, scale, spacing):
-        strings = []
-        # 🔵 하루 0~24시간 고정 모드
+    def tickValues(self, minVal, maxVal, size):
         if self.mode == "daily":
+            spacing = 3600  # 60 minutes in seconds
+
+            # 0~86400 범위 고정
+            ticks = []
+            start = int(minVal // spacing) * spacing
+            end = int(maxVal // spacing + 1) * spacing
+
+            values = []
+            for v in range(start, end + spacing, spacing):
+                if 0 <= v <= 86400:
+                    values.append(v)
+
+            ticks.append((spacing, values))
+            return ticks
+
+        return super().tickValues(minVal, maxVal, size)
+
+    def tickStrings(self, values, scale, spacing):
+        # 하루 0~24시간 고정 모드
+        if self.mode == "daily":
+            strings = []
             for v in values:
                 if v < 0 or v > 86400:
                     strings.append("")
@@ -62,14 +81,8 @@ class TimeAxisItem(pg.AxisItem):
                 strings.append(f"{h:02d}:{m:02d}")
             return strings
 
-        if self.start_time is None:
-            return super().tickStrings(values, scale, spacing)
-
-        for v in values:
-            time_obj = self.start_time + timedelta(seconds=v)
-            # Include full date to handle multi-day data
-            strings.append(time_obj.strftime('%Y/%m/%d\n%H:%M:%S'))
-        return strings
+        # if self.start_time is None:
+        return super().tickStrings(values, scale, spacing)
 
 
 class CustomViewBox(pg.ViewBox):
@@ -130,14 +143,13 @@ class CustomViewBox(pg.ViewBox):
 
         # Check if mouse is in the plot area (not on axes)
         if vb_rect.contains(pos):
-            # Convert mouse position to data coordinates
-            mouse_point = self.mapSceneToView(pos)
+            delta = ev.delta()
 
             # In plot area: only allow X-axis zoom/pan
-            if ev.delta() > 0:
-                self.scaleBy(x=0.9, y=1.0, center=mouse_point)
+            if delta > 0:
+                self.scaleBy(x=0.9, y=1.0)
             else:
-                self.scaleBy(x=1.1, y=1.0, center=mouse_point)
+                self.scaleBy(x=1.1, y=1.0)
 
             # Enforce maximum X-axis range
             self._enforce_max_x_range()
@@ -157,6 +169,7 @@ class CustomViewBox(pg.ViewBox):
             super().wheelEvent(ev, axis)
 
     def _enforce_max_x_range(self):
+        print("MAX RANGE ENFORCED")
         """Limit the X-axis visible range to max_x_range seconds"""
         # Get max range from analyzer if available, otherwise use default
         max_range = self.analyzer.max_x_range if self.analyzer else self.MAX_X_RANGE
@@ -281,7 +294,7 @@ class CowAnalyzer(QMainWindow):
         self._toggling_legend = False
 
         # Settings
-        self.max_x_range = 3600  # Default: 1 hour in seconds
+        self.max_x_range = 86400     # Default: 24 hour in seconds
 
         self.clear_action = QAction("Clear all datasets", self)
         self.clear_action.triggered.connect(self.clear_all_datasets)
@@ -1189,7 +1202,12 @@ class CowAnalyzer(QMainWindow):
         entry.checkbox.blockSignals(True)
         entry.checkbox.setChecked(all_checked)
         entry.checkbox.blockSignals(False)
-
+        if state:
+            if not entry.visible:
+                entry.visible = True
+                entry.checkbox.blockSignals(True)
+                entry.checkbox.setChecked(True)
+                entry.checkbox.blockSignals(False)
         # entry.visible = all_checked
 
         self.update_graph()
@@ -1403,6 +1421,7 @@ class CowAnalyzer(QMainWindow):
         axis = self.graph_widget.getAxis('bottom')
         if isinstance(axis, TimeAxisItem):
             axis.set_daily_mode(True)
+        self.main_vb.setXRange(0, 86400, padding=0)
         
 
     def set_excel_visible(self, key, visible):
@@ -1449,6 +1468,9 @@ class CowAnalyzer(QMainWindow):
 
     def _redraw_graph_core(self, visible_entries):
         print("VISIBLE ENTRIES:", len(visible_entries))
+        for entry in self.data_model.get_all_entries():
+            for curve in entry.curves.values():
+                curve.setVisible(False)
         if not visible_entries:
             return
 
@@ -1545,6 +1567,7 @@ class CowAnalyzer(QMainWindow):
 
         for entry in self.get_visible_entries():
             print("   AFTER :", entry.visible)
+
         print("<<< update_graph EXIT")
 
 
@@ -1736,7 +1759,7 @@ class CowAnalyzer(QMainWindow):
         if file_path:
             try:
                 self.export_to_excel(file_path)
-                QMessageBox.information(self, "Success", "Data exported to Excel successfully!")
+                # QMessageBox.information(self, "Success", "Data exported to Excel successfully!")
             except PermissionError as e:
                 # File is open or no write permission
                 QMessageBox.warning(
@@ -2018,8 +2041,10 @@ class CowAnalyzer(QMainWindow):
             self.dataset_layout.removeWidget(entry.metric_container)
             entry.metric_container.deleteLater()
 
+        entry.visible = False
+        self.update_graph()
         self.data_model.remove(key)
-        self.update_graph()  
+          
 
     def show_dataset_context_menu(self, key, widget, pos):
         menu = QMenu(self)
