@@ -8,11 +8,12 @@ from core import (DataPool, StatisticsEngine, DatasetEntry, CowData, DataModel,
                   GraphEngine, ALL_METRICS)
 import sys
 import os
+import traceback
 import pyqtgraph as pg
 import numpy as np
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtCore import Qt, QTimer
-from datetime import datetime
+from datetime import datetime, timedelta
 from openpyxl import Workbook, load_workbook
 from dataset import VendorExcelParser, DatasetManager
 
@@ -293,6 +294,13 @@ class CowAnalyzer(QMainWindow):
         # Flag to indicate legend is being toggled (to prevent auto range disable)
         self._toggling_legend = False
 
+        self.hover_proxy = None
+        self.v_line = None
+        self.h_line = None
+        self.hover_label = None
+        self.hover_curves = []
+        self._hover_updating = False
+
         # Settings
         self.max_x_range = 86400     # Default: 24 hour in seconds
 
@@ -517,6 +525,97 @@ class CowAnalyzer(QMainWindow):
         self.c_delta_range = None
         self.temp_range = None
         self.humidity_range = None
+
+        # -----------------------------
+        # Crosshair cursor system
+        # -----------------------------
+        self.vline = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen(color='y'))
+        self.main_vb.addItem(self.vline, ignoreBounds=True)
+
+        # self.cursor_shadow = pg.TextItem(
+        #     anchor=(0, 1),
+        #     color=(0, 0, 0, 150) # 반투명 검정
+        # )
+        self.cursor_text = pg.TextItem(
+            anchor=(0,1),
+            color='w',
+            fill=pg.mkBrush(0, 0, 0, 90), # 반투명 배경
+            # border=pg.mkPen((255,255,255,150)) # 텍스트 상자
+        )
+        # self.cursor_shadow.setZValue(99)
+        self.cursor_text.setZValue(100) # 그래프보다 위에 표시
+        # self.main_vb.addItem(self.cursor_shadow, ignoreBounds=True)
+        self.main_vb.addItem(self.cursor_text, ignoreBounds=True)
+
+        self.mouse_proxy = pg.SignalProxy(
+            self.graph_widget.scene().sigMouseMoved,
+            rateLimit=60,
+            slot=self.on_mouse_moved
+        ) 
+
+        # Data time reference
+        self.start_time = None
+        self.current_time_seconds = None
+    
+
+    def on_mouse_moved(self, evt):
+        # print("HOVER EVENT")
+        if getattr(self, "current_time_seconds", None) is None:
+            # print("NO TIME DATA")
+            return
+        if self._hover_updating:
+            print("NO HOVER")
+            return
+        self._hover_updating = True
+
+        try:
+            pos = evt[0]
+
+            mouse_point = self.main_vb.mapSceneToView(pos)
+            x = mouse_point.x()
+            y = mouse_point.y()
+
+            # 커서선 이동
+            self.vline.setPos(x)
+
+            time_array = np.array(self.current_time_seconds)
+            if len(time_array) == 0:
+                print("time_array is 0")
+                return
+            # 가장 가까운 데이터 index
+            idx = np.argmin(np.abs(time_array - x))
+
+            data_time = self.start_time + timedelta(seconds=time_array[idx])
+            time_str = data_time.strftime("%H:%M")
+            text_lines = [time_str]
+
+            # 모든 visible dataset 검사
+            for entry in self.get_visible_entries():
+                for metric, curve in entry.curves.items():
+                    if not curve.isVisible():
+                        continue
+
+                    xdata, ydata = curve.getData()
+                    if ydata is None or idx >= len(ydata):
+                        continue
+
+                    curve_y = ydata[idx]
+                    text_lines.append(f"{metric}: {curve_y:.2f}")
+
+            text = "\n".join(text_lines)
+
+            offset = 0.02*(self.main_vb.viewRange()[0][1]-self.main_vb.viewRange()[0][0])
+            self.cursor_text.setText(text)
+            # self.cursor_shadow.setText(text)
+
+            # self.cursor_shadow.setPos(x + offset + 0.1, y - 0.1) # 그림자는 살짝 아래쪽
+            self.cursor_text.setPos(x + offset, y)
+        except Exception as e:
+            print("HOVER ERROR:", e)
+            traceback.print_exc()
+        finally:
+            self._hover_updating = False
+
 
     def on_legend_clicked(self, event):
         """Handles clicks on the legend to toggle plot visibility."""
@@ -766,6 +865,9 @@ class CowAnalyzer(QMainWindow):
 
     def on_view_range_changed(self, view_box, ranges):
         """Store current X and Y ranges when user manually zooms/pans"""
+        if getattr(self, "_hover_updating", False):
+            return
+        
         # Disable flag to prevent recursive updates
         if not hasattr(self, '_updating_ranges'):
             self._updating_ranges = False
@@ -787,6 +889,9 @@ class CowAnalyzer(QMainWindow):
             vb_name = 'activity'
 
         print(f"[DEBUG] on_view_range_changed called from ViewBox: {vb_name}")
+        print("MAIN RANGE:", self.main_vb.viewRange())
+        if hasattr(self, "activity_vb"):
+            print("ACT RANGE:", self.activity_vb.viewRange())
 
         # Get current ranges
         x_range = ranges[0]
@@ -1475,6 +1580,8 @@ class CowAnalyzer(QMainWindow):
             return
 
         start_time, time_seconds = self.data_model.get_time_reference()
+        self.start_time = start_time
+        self.current_time_seconds = time_seconds
         if not time_seconds:
             print("[WARN] No time reference")
             return
