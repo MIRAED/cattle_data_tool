@@ -612,12 +612,35 @@ class CowAnalyzer(QMainWindow):
 
             text = "\n".join(text_lines)
 
-            offset = 0.02*(self.main_vb.viewRange()[0][1]-self.main_vb.viewRange()[0][0])
+            # offset = 0.02*(self.main_vb.viewRange()[0][1]-self.main_vb.viewRange()[0][0])
             self.cursor_text.setText(text)
-            # self.cursor_shadow.setText(text)
 
-            # self.cursor_shadow.setPos(x + offset + 0.1, y - 0.1) # 그림자는 살짝 아래쪽
-            self.cursor_text.setPos(x + offset, y)
+            (x_min, x_max), (y_min, y_max) = self.main_vb.viewRange()
+            x_offset = 0.02 * (x_max - x_min)
+            y_offset = 0.02 * (y_max - y_min)
+            text_x = x + x_offset
+            text_y = y + y_offset
+
+            rect = self.cursor_text.boundingRect() # 텍스트 실제 크기
+            text_w = rect.width()
+            text_h = rect.height()
+
+            scale_x = (x_max - x_min) / self.main_vb.width() # view 좌표 -> scene scale 보정
+            scale_y = (y_max - y_min) / self.main_vb.height()
+
+            text_w *= scale_x
+            text_h *= scale_y
+
+            if text_x + text_w > x_max: # 우측 벗어남 감지
+                text_x = x - text_w - x_offset
+            if text_x < x_min: # 좌측 벗어남 감지
+                text_x = x_min + x_offset
+            if text_y + text_h > y_max: # 상단 벗어남 방지
+                text_y = y - text_h - y_offset
+            if text_y < y_min: # 하단 벗어남 감지
+                text_y = y - text_h + y_offset 
+
+            self.cursor_text.setPos(text_x, text_y)
         except Exception as e:
             print("HOVER ERROR:", e)
             traceback.print_exc()
