@@ -9,6 +9,7 @@ from core import (DataPool, StatisticsEngine, DatasetEntry, CowData, DataModel,
 import sys
 import os
 import traceback
+import string
 import pyqtgraph as pg
 import numpy as np
 from PySide6.QtGui import QAction, QIcon
@@ -578,29 +579,36 @@ class CowAnalyzer(QMainWindow):
             # 커서선 이동
             self.vline.setPos(x)
 
-            time_array = np.array(self.current_time_seconds)
-            if len(time_array) == 0:
+            self.time_array = np.array(self.current_time_seconds)
+            if len(self.time_array) == 0:
                 print("time_array is 0")
                 return
             # 가장 가까운 데이터 index
-            idx = np.argmin(np.abs(time_array - x))
+            idx = np.argmin(np.abs(self.time_array - x))
 
-            data_time = self.start_time + timedelta(seconds=time_array[idx])
+            data_time = self.start_time + timedelta(seconds=self.time_array[idx])
             time_str = data_time.strftime("%H:%M")
             text_lines = [time_str]
 
             # 모든 visible dataset 검사
+            metric_values = {}
             for entry in self.get_visible_entries():
                 for metric, curve in entry.curves.items():
                     if not curve.isVisible():
                         continue
 
-                    xdata, ydata = curve.getData()
+                    ydata = entry.get_metric_data(metric)
                     if ydata is None or idx >= len(ydata):
                         continue
 
                     curve_y = ydata[idx]
-                    text_lines.append(f"{metric}: {curve_y:.2f}")
+                    if curve_y is None:
+                        continue
+                    # text_lines.append(f"{metric}: {curve_y:.2f}")
+                    metric_values.setdefault(metric, []).append((entry.label, curve_y))
+            for metric, values in sorted(metric_values.items()):
+                value_str = " ".join(f"{name}:{v:.2f}" for name, v in values)
+                text_lines.append(f"{metric}: {value_str}")
 
             text = "\n".join(text_lines)
 
@@ -1238,6 +1246,7 @@ class CowAnalyzer(QMainWindow):
         
         file_path, date = key
         name = os.path.basename(file_path)
+        display_name = f"[{entry.label}] {name}"
 
         # header widget
         header_widget = QWidget()
@@ -1256,7 +1265,7 @@ class CowAnalyzer(QMainWindow):
         arrow_btn.setCheckable(True)
         arrow_btn.setChecked(True)
         # file checkbox
-        file_checkbox = QCheckBox(name)
+        file_checkbox = QCheckBox(display_name)
         file_checkbox.setChecked(entry.visible)
         file_checkbox.stateChanged.connect(
             lambda state, e=key: self.on_dataset_toggled(e, state)
@@ -1518,6 +1527,9 @@ class CowAnalyzer(QMainWindow):
         )
         self.data_pool.add(cow)
         entry = DatasetEntry(cow)
+
+        dataset_index = len(self.data_model.get_all_entries()) # dataset label 생성
+        entry.label = string.ascii_uppercase[dataset_index]
 
         self._create_curves_for_entry(entry)
 
