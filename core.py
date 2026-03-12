@@ -29,9 +29,11 @@ ALL_METRICS = [
 
 
 class DatasetEntry:
-    def __init__(self, cow: CowData):
+    def __init__(self, cow: CowData, base_color):
         self.cow = cow
         self.label = cow.label
+
+        self.base_color = base_color
 
         # 데이터 전체 on/off
         self.visible = True

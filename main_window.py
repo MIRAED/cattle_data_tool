@@ -35,6 +35,21 @@ DEFAULT_PLOT_VISIBILITY = {
     'cow_avg_activity': True
 }
 
+DATASET_COLORS = [
+    (231, 76, 60),
+    (52, 152, 219),
+    (46, 204, 113),
+    (155, 89, 182),
+    (241, 196, 15),
+    (230, 126, 34),
+]
+
+METRIC_COLOR_OFFSET = {
+    "current": 0,
+    "station": 40,
+    "avg": 80
+}
+
 class TimeAxisItem(pg.AxisItem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1354,8 +1369,21 @@ class CowAnalyzer(QMainWindow):
         entry.metric_checkboxes = []
 
         for metric in ALL_METRICS:
-
+            color = self.metric_color(entry, metric)
+            r,g,b = color
+            icon = QLabel("■")
+            icon.setStyleSheet(f"color: rgb({r},{g},{b}); font-size:14px;")
+            icon.setFixedWidth(10)
             cb = QCheckBox(metric.label)
+            cb.setStyleSheet("QCheckBox { margin-left: 0px; }")
+
+            row = QHBoxLayout()
+            row.setContentsMargins(0,0,0,0)
+            row.setSpacing(3)
+            row.addWidget(icon)
+            row.addWidget(cb)
+
+            layout.addLayout(row)
 
             cb.blockSignals(True)
             cb.setChecked(entry.is_metric_visible(metric.key))
@@ -1365,9 +1393,8 @@ class CowAnalyzer(QMainWindow):
                 lambda state, e=entry, k=metric.key:
                     self.on_metric_checkbox_changed(e, k, state)
             )
-
-            layout.addWidget(cb)
             entry.metric_checkboxes.append(cb)
+
 
 
     def parse_log_file(self, file_path):
@@ -1415,21 +1442,46 @@ class CowAnalyzer(QMainWindow):
             return values + [None] * (target_len - len(values))
         return values[:target_len]
     
+    def metric_color(self, entry, metric):
+        r,g,b = entry.base_color
+        offset_map = {
+            "temps_current": (0, 0, 0),
+            "temps_station": (80,80,80),
+            "temps_avg": (140,140,140),
 
-    def _create_curves_for_entry(self, entry):
-        # metric_key : (viewbox, color)
-        metric_styles = {
-            "temps_current":  (self.main_vb, "r"),
-            "temps_station": (self.main_vb, "g"),
-            "temps_avg":     (self.main_vb, "b"),
-            "acts_current":  (self.activity_vb, "c"),
-            "acts_station":  (self.activity_vb, "m"),
-            "acts_avg":      (self.activity_vb, "y"),
+            "acts_current": (0, 40, 40),
+            "acts_station": (0, 80, 80),
+            "acts_avg": (40, 120, 120),
         }
 
-        for metric_key, (vb, color) in metric_styles.items():
+        dr, dg, db = offset_map.get(metric.key, (0,0,0))
+
+        r = min(255, r + dr)
+        g = min(255, g + dg)
+        b = min(255, b + db)
+
+        return (r,g,b)
+
+    def _create_curves_for_entry(self, entry):
+        metric_vb = {
+            "temps_current":  self.main_vb,
+            "temps_station": self.main_vb,
+            "temps_avg":     self.main_vb,
+            "acts_current": self.activity_vb,
+            "acts_station": self.activity_vb,
+            "acts_avg":     self.activity_vb,
+        }
+        style_map = {
+            "current": Qt.SolidLine,
+            "station": Qt.DashLine,
+            "avg": Qt.DotLine
+        }
+
+        for metric_key, vb in metric_vb.items():
+            metric = next(m for m in ALL_METRICS if m.key == metric_key)
+            color = self.metric_color(entry, metric)
             curve = pg.PlotDataItem(
-                pen=pg.mkPen(color, width=2),
+                pen=pg.mkPen(color, width=2),# style=style_map.get(metric.kind, Qt.SolidLine)),
                 clipToView=True
             )
 
@@ -1549,7 +1601,10 @@ class CowAnalyzer(QMainWindow):
             acts_avg=acts_avg,
         )
         self.data_pool.add(cow)
-        entry = DatasetEntry(cow)
+
+        color = DATASET_COLORS[
+            len(self.data_model.get_all_entries()) % len(DATASET_COLORS)]
+        entry = DatasetEntry(cow, color)
 
         dataset_index = len(self.data_model.get_all_entries()) # dataset label 생성
         entry.label = string.ascii_uppercase[dataset_index]
