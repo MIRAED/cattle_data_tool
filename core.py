@@ -16,7 +16,10 @@ class Metric:
     
     @property
     def label(self):
-        return f"{self.group.capitalize()} {self.kind.capitalize()}"
+        group = GROUP_KR.get(self.group, self.group)
+        kind = KIND_KR.get(self.kind, self.kind)
+        return f"{kind} {group}"
+        # return f"{self.group.capitalize()} {self.kind.capitalize()}"
      
 ALL_METRICS = [
     Metric("temps", "current"),
@@ -26,6 +29,16 @@ ALL_METRICS = [
     Metric("acts", "station"),
     Metric("acts", "avg"),
 ]
+
+GROUP_KR = {
+    "temps": "체온",
+    "acts": "활동량"
+}
+KIND_KR = {
+    "current": "현재",
+    "station": "표본",
+    "avg": "평균"
+}
 
 
 class DatasetEntry:

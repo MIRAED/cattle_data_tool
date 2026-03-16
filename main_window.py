@@ -27,12 +27,12 @@ CSV_AUTO_CONVERT = False
 
 # Default visibility settings for plots when opening a log file
 DEFAULT_PLOT_VISIBILITY = {
-    'cow_current_temp': True,
-    'cow_station_temp': True,
-    'cow_avg_temp': True,
-    'cow_current_activity': True,
-    'cow_station_activity': True,
-    'cow_avg_activity': True
+    'temps_current': True,
+    'temps_station': True,
+    'temps_avg': True,
+    'acts_current': True,
+    'acts_station': True,
+    'acts_avg': True
 }
 
 DATASET_COLORS = [
@@ -48,6 +48,28 @@ METRIC_COLOR_OFFSET = {
     "current": 0,
     "station": 40,
     "avg": 80
+}
+
+METRIC_GROUPS = {
+    "temps": [
+        "temps_current",
+        "temps_station",
+        "temps_avg"
+    ],
+    "acts": [
+        "acts_current",
+        "acts_station",
+        "acts_avg"
+    ]
+}
+
+METRIC_LABEL_KR = {
+    "temps_current": "현재 체온",
+    "temps_station": "표본 체온",
+    "temps_avg": "평균 체온",
+    "acts_current": "현재 활동량",
+    "acts_station": "표본 활동량",
+    "acts_avg": "평균 활동량"
 }
 
 class TimeAxisItem(pg.AxisItem):
@@ -427,6 +449,26 @@ class CowAnalyzer(QMainWindow):
         self.dataset_scroll.setWidget(self.dataset_container)
         data_layout.addWidget(self.dataset_scroll)
 
+        # -----------------------------
+        # Metric group controls
+        # -----------------------------
+        self.temp_group_cb = QCheckBox("Show All Temperature")
+        self.activity_group_cb = QCheckBox("Show All Activity")
+
+        self.temp_group_cb.setChecked(True)
+        self.activity_group_cb.setChecked(True)
+
+        self.temp_group_cb.stateChanged.connect(
+            lambda state: self.toggle_metric_group("temps", state)
+        )
+
+        self.activity_group_cb.stateChanged.connect(
+            lambda state: self.toggle_metric_group("acts", state)
+        )
+
+        self.dataset_layout.addWidget(self.temp_group_cb)
+        self.dataset_layout.addWidget(self.activity_group_cb)
+
         # ==================================================
         # Tab 2 — Analysis
         # ==================================================
@@ -623,7 +665,8 @@ class CowAnalyzer(QMainWindow):
                     metric_values.setdefault(metric, []).append((entry.label, curve_y))
             for metric, values in sorted(metric_values.items()):
                 value_str = " ".join(f"{name}:{v:.2f}" for name, v in values)
-                text_lines.append(f"{metric}: {value_str}")
+                label = METRIC_LABEL_KR.get(metric, metric)
+                text_lines.append(f"{label}: {value_str}")
 
             text = "\n".join(text_lines)
 
@@ -1171,12 +1214,12 @@ class CowAnalyzer(QMainWindow):
             self.last_excel_index = 0
 
             # Reset plot visibility to default settings
-            self.cow_current_temp_visible = DEFAULT_PLOT_VISIBILITY['cow_current_temp']
-            self.cow_station_temp_visible = DEFAULT_PLOT_VISIBILITY['cow_station_temp']
-            self.cow_avg_temp_visible = DEFAULT_PLOT_VISIBILITY['cow_avg_temp']
-            self.cow_current_activity_visible = DEFAULT_PLOT_VISIBILITY['cow_current_activity']
-            self.cow_station_activity_visible = DEFAULT_PLOT_VISIBILITY['cow_station_activity']
-            self.cow_avg_activity_visible = DEFAULT_PLOT_VISIBILITY['cow_avg_activity']
+            self.cow_current_temp_visible = DEFAULT_PLOT_VISIBILITY['temps_current']
+            self.cow_station_temp_visible = DEFAULT_PLOT_VISIBILITY['temps_station']
+            self.cow_avg_temp_visible = DEFAULT_PLOT_VISIBILITY['temps_avg']
+            self.cow_current_activity_visible = DEFAULT_PLOT_VISIBILITY['acts_current']
+            self.cow_station_activity_visible = DEFAULT_PLOT_VISIBILITY['acts_station']
+            self.cow_avg_activity_visible = DEFAULT_PLOT_VISIBILITY['acts_avg']
 
             # Hide all graph axes before parsing (in case new file has no data for some graphs)
             if hasattr(self, 'activity_axis'):
@@ -1268,8 +1311,31 @@ class CowAnalyzer(QMainWindow):
             cb.setChecked(entry.visible)
             cb.blockSignals(False)
 
-        for metric_key in entry.metric_visible:
-            entry.set_metric_visible(metric_key, entry.visible)
+        for metric in ALL_METRICS:
+            entry.set_metric_visible(metric.key, entry.visible)
+        for metric_key, curve in entry.curves.items():
+            curve.setVisible(entry.visible)
+
+        self.update_graph()
+    
+    def toggle_metric_group(self, group, state):
+        print("toggle_metric_group state : ", state)
+        visible = bool(state)
+        print("visible : ", visible)
+        metric_keys = METRIC_GROUPS[group]
+
+        for entry in self.data_model.get_all_entries():
+            for i, metric in enumerate(ALL_METRICS):
+                if metric.key in metric_keys:
+                    entry.set_metric_visible(metric.key, visible)
+
+                    if metric.key in entry.curves:
+                        entry.curves[metric.key].setVisible(visible)
+
+                    cb = entry.metric_checkboxes[i]
+                    cb.blockSignals(True)
+                    cb.setChecked(visible)
+                    cb.blockSignals(False)
 
         self.update_graph()
 
