@@ -549,7 +549,8 @@ class CowAnalyzer(QMainWindow):
         # Add the additional axes to the plot layout
         # Right side: Activity
         plot_item.layout.addItem(self.activity_axis, 2, 3)
-
+        self.activity_axis.linkToView(self.activity_vb)
+        self.activity_vb.setGeometry(self.main_vb.sceneBoundingRect())
 
         # Add ViewBoxes to scene
         plot_item.scene().addItem(self.activity_vb)
@@ -663,7 +664,24 @@ class CowAnalyzer(QMainWindow):
                         continue
                     # text_lines.append(f"{metric}: {curve_y:.2f}")
                     metric_values.setdefault(metric, []).append((entry.label, curve_y))
-            for metric, values in sorted(metric_values.items()):
+            metric_order = ["current", "station", "avg"]
+            def get_metric_priority(metric_name):
+                if metric_name.startswith("temps"):
+                    type_priority = 0
+                elif metric_name.startswith("acts"):
+                    type_priority = 1
+                else:
+                    type_priority = 999
+
+                sub_priority = 999
+                for i, key in enumerate(metric_order):
+                    if key in metric_name:
+                        sub_priority = i
+                        break
+                return (type_priority, sub_priority)
+
+            for metric in sorted(metric_values.keys(), key=get_metric_priority):
+                values = metric_values[metric]
                 value_str = " ".join(f"{name}:{v:.2f}" for name, v in values)
                 label = METRIC_LABEL_KR.get(metric, metric)
                 text_lines.append(f"{label}: {value_str}")
@@ -1223,7 +1241,7 @@ class CowAnalyzer(QMainWindow):
 
             # Hide all graph axes before parsing (in case new file has no data for some graphs)
             if hasattr(self, 'activity_axis'):
-                self.activity_axis.setStyle(showValues=False)
+                self.activity_axis.setStyle(showValues=True)
 
             # Prevent range change signals from disabling auto range during update
             print("[DEBUG] open_log_file: About to parse and update graph")
